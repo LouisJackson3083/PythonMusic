@@ -1,4 +1,9 @@
 import numpy as np
+from scipy.io import wavfile
+import matplotlib.pyplot as plt
+plt.style.use('seaborn-dark')
+
+#region FUNCTIONS
 
 def get_piano_notes():   
     # White keys are in Uppercase and black keys (sharps) are in lowercase
@@ -14,4 +19,34 @@ def get_piano_notes():
     note_freqs[''] = 0.0 # stop
     return note_freqs
 
-print(get_piano_notes())
+def get_sine_wave(frequency, duration, sample_rate=44100, amplitude=4096):
+    t = np.linspace(0, duration, int(sample_rate*duration)) # Time axis
+    wave = amplitude*np.sin(2*np.pi*frequency*t)
+    return wave
+
+#endregion
+
+# # Get middle C frequency
+# note_freqs = get_piano_notes()
+# frequency = note_freqs['C4']
+
+# # Pure sine wave
+# sine_wave = get_sine_wave(frequency, duration=2, amplitude=2048)
+# wavfile.write('pure_c.wav', rate=44100, data=sine_wave.astype(np.int16))
+
+# Load data from wav file
+sample_rate, middle_c = wavfile.read('data/piano_c.wav')
+
+#FFT
+t = np.arange(middle_c.shape[0])
+freq = np.fft.fftfreq(t.shape[-1])*sample_rate
+sp = np.fft.fft(middle_c) 
+
+# Plot spectrum
+plt.plot(freq, abs(sp.real))
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Amplitude')
+plt.title('Spectrum of Middle C Recording on Piano')
+plt.xlim((0, 2000))
+plt.grid()
+plt.show()
