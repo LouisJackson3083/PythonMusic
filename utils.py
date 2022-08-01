@@ -1,11 +1,23 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Utility functions for writing music in Python.
+
+@author: khe
+"""
 import numpy as np
-from scipy.io import wavfile
-import matplotlib.pyplot as plt
-plt.style.use('seaborn-dark')
 
-#region FUNCTIONS
+def get_piano_notes():
+    '''
+    Get the frequency in hertz for all keys on a standard piano.
 
-def get_piano_notes():   
+    Returns
+    -------
+    note_freqs : dict
+        Mapping between note name and corresponding frequency.
+
+    '''
+    
     # White keys are in Uppercase and black keys (sharps) are in lowercase
     octave = ['C', 'c', 'D', 'd', 'E', 'F', 'f', 'G', 'g', 'A', 'a', 'B'] 
     base_freq = 440 #Frequency of Note A4
@@ -20,12 +32,54 @@ def get_piano_notes():
     return note_freqs
 
 def get_sine_wave(frequency, duration, sample_rate=44100, amplitude=4096):
-    t = np.linspace(0, duration, int(sample_rate*duration)) # Time axis
+    '''
+    Get pure sine wave. 
+
+    Parameters
+    ----------
+    frequency : float
+        Frequency in hertz.
+    duration : float
+        Time in seconds.
+    sample_rate : int, optional
+        Wav file sample rate. The default is 44100.
+    amplitude : int, optional
+        Peak Amplitude. The default is 4096.
+
+    Returns
+    -------
+    wave : TYPE
+        DESCRIPTION.
+
+    '''
+    t = np.linspace(0, duration, int(sample_rate*duration))
     wave = amplitude*np.sin(2*np.pi*frequency*t)
     return wave
 
 def apply_overtones(frequency, duration, factor, sample_rate=44100, amplitude=4096):
+    '''
+    Return fundamental note with overtones applied. 
 
+    Parameters
+    ----------
+    frequency : float
+        Frequency in hertz.
+    duration : float
+        Time in seconds.
+    factor : list
+        List of floats as fraction of the fundamental amplitude for amplitudes 
+        of the overtones.
+    sample_rate : int, optional
+        Wav file sample rate. The default is 44100.
+    amplitude : int, optional
+        Peak Amplitude. The default is 4096.
+
+    Returns
+    -------
+    fundamental : ndarray
+        Output note of `float` type.
+
+    '''
     assert abs(1-sum(factor)) < 1e-8
     
     frequencies = np.minimum(np.array([frequency*(x+1) for x in range(len(factor))]), sample_rate//2)
@@ -38,7 +92,31 @@ def apply_overtones(frequency, duration, factor, sample_rate=44100, amplitude=40
     return fundamental
 
 def get_adsr_weights(frequency, duration, length, decay, sustain_level, sample_rate=44100):
+    '''
+    ADSR(attack, decay, sustain, and release) envelop generator with exponential
+    weights applied.
 
+    Parameters
+    ----------
+    frequency : float
+        Frequency in hertz.
+    duration : float
+        Time in seconds.
+    length : list
+        List of fractions that indicates length of each stage in ADSR.
+    decay : list
+        List of float for decay factor to be used in each stage for exponential
+        weights. 
+    sustain_level : float
+        Amplitude of `S` stage as a fraction of max amplitude.
+    sample_rate : int, optional
+        Wav file sample rate. The default is 44100.
+
+    Returns
+    -------
+    weights : ndarray
+
+    '''
     assert abs(sum(length)-1) < 1e-8
     assert len(length) ==len(decay) == 4
     
@@ -74,20 +152,32 @@ def get_adsr_weights(frequency, duration, length, decay, sustain_level, sample_r
     return weights
 
 def apply_pedal(note_values, bar_value):
-    # Check that we have whole number of bars
+    '''
+    Press and hold the sustain pedal throughout the bar.
+
+    Parameters
+    ----------
+    note_values : list
+        List of note duration.
+    bar_value : float
+        Duration of a measure in seconds.
+
+    Returns
+    -------
+    new_values : list
+        List of note duration with sustain.
+
+    '''
     assert sum(note_values) % bar_value == 0
     new_values = []
     start = 0
     while True:
-        # Count total duration from end of last bar
         cum_value = np.cumsum(np.array(note_values[start:]))
-        # Find end of this bar
         end = np.where(cum_value == bar_value)[0][0]
-        if end == 0: # If the note takes up the whole bar
+        if end == 0:
             new_values += [note_values[start]]
         else:
             this_bar = np.array(note_values[start:start+end+1])
-            # New value of note is the remainder of bar = (total duration of bar) - (cumulative duration thus far)
             new_values += [bar_value-np.sum(this_bar[:i]) for i in range(len(this_bar))]
         start += end+1
         if start == len(note_values):
@@ -96,78 +186,49 @@ def apply_pedal(note_values, bar_value):
 
 def get_song_data(music_notes, note_values, bar_value, factor, length,
                   decay, sustain_level, sample_rate=44100, amplitude=4096):
-    # Get note frequencies
+    '''
+    Generate song from notes. 
+
+    Parameters
+    ----------
+    music_notes : list
+        List of note names. 
+    note_values : list
+        List of note duration.
+    bar_value: float
+        Duration of a bar. 
+    factor : list
+        Factor to be used to generate overtones.
+    length : list
+        Stage length to be used to calculate ADSR weights.
+    decay : list
+        Stage decay to be used to calculate ADSR weights.
+    sustain_level : float
+        Amplitude of `S` stage as a fraction of max amplitude.
+    sample_rate : int, optional
+        Wav file sample rate. The default is 44100.
+    amplitude : int, optional
+        Peak Amplitude. The default is 4096.
+
+    Returns
+    -------
+    song : ndarray
+
+    '''
     note_freqs = get_piano_notes()
     frequencies = [note_freqs[note] for note in music_notes]
-    # Get new note durations with sustain applied
     new_values = apply_pedal(note_values, bar_value)
-    # End of each note without sustain
+    duration = int(sum(note_values)*sample_rate)
     end_idx = np.cumsum(np.array(note_values)*sample_rate).astype(int)
-    # Start of each note
     start_idx = np.concatenate(([0], end_idx[:-1]))
-    # End of note with sustain
     end_idx = np.array([start_idx[i]+new_values[i]*sample_rate for i in range(len(new_values))]).astype(int)
     
-    # Total duration of the piece
-    duration = int(sum(note_values)*sample_rate)    
     song = np.zeros((duration,))
     for i in range(len(music_notes)):
-        # Fundamental + overtones
         this_note = apply_overtones(frequencies[i], new_values[i], factor)
-        # ADSR model
         weights = get_adsr_weights(frequencies[i], new_values[i], length, 
                                    decay, sustain_level)
         song[start_idx[i]:end_idx[i]] += this_note*weights
 
     song = song*(amplitude/np.max(song))
     return song
-
-
-#endregion
-
-# Get middle C frequency
-note_freqs = get_piano_notes()
-frequency = note_freqs['C4']
-
-# Pure sine wave
-sine_wave = get_sine_wave(frequency, duration=2, amplitude=2048)
-wavfile.write('pure_c.wav', rate=44100, data=sine_wave.astype(np.int16))
-
-# Load data from wav file
-sample_rate, middle_c = wavfile.read('data/piano_c.wav')
-
-# Fourier Frequency Transform
-t = np.arange(middle_c.shape[0])
-freq = np.fft.fftfreq(t.shape[-1])*sample_rate
-sp = np.fft.fft(middle_c) 
-
-# Get positive frequency
-idx = np.where(freq > 0)[0]
-freq = freq[idx]
-sp = sp[idx]
-
-# Get dominant frequencies
-sort = np.argsort(-abs(sp.real))[:100]
-dom_freq = freq[sort]
-
-# Round and calculate amplitude ratio
-freq_ratio = np.round(dom_freq/frequency)
-unique_freq_ratio = np.unique(freq_ratio)
-amp_ratio = abs(sp.real[sort]/np.sum(sp.real[sort]))
-factor = np.zeros((int(unique_freq_ratio[-1]), ))
-for i in range(factor.shape[0]):
-    idx = np.where(freq_ratio==i+1)[0]
-    factor[i] = np.sum(amp_ratio[idx])
-factor = factor/np.sum(factor)
-
-# Get sound wave
-note = apply_overtones(frequency, duration=2.5, factor=factor)
-
-# Apply smooth ADSR weights
-weights = get_adsr_weights(frequency, duration=2.5, length=[0.05, 0.25, 0.55, 0.15],
-                           decay=[0.075,0.02,0.005,0.1], sustain_level=0.1)
-
-# Write to file
-data = note*weights
-data = data*(4096/np.max(data)) # Adjusting the Amplitude 
-wavfile.write('synthetic_c.wav', sample_rate, data.astype(np.int16))
