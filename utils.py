@@ -72,7 +72,57 @@ def get_adsr_weights(frequency, duration, length, decay, sustain_level, sample_r
     if tail > 0:
         weights = np.concatenate((weights, weights[-1]-weights[-1]/tail*np.arange(tail)))
     return weights
+
+def apply_pedal(note_values, bar_value):
+    # Check that we have whole number of bars
+    assert sum(note_values) % bar_value == 0
+    new_values = []
+    start = 0
+    while True:
+        # Count total duration from end of last bar
+        cum_value = np.cumsum(np.array(note_values[start:]))
+        # Find end of this bar
+        end = np.where(cum_value == bar_value)[0][0]
+        if end == 0: # If the note takes up the whole bar
+            new_values += [note_values[start]]
+        else:
+            this_bar = np.array(note_values[start:start+end+1])
+            # New value of note is the remainder of bar = (total duration of bar) - (cumulative duration thus far)
+            new_values += [bar_value-np.sum(this_bar[:i]) for i in range(len(this_bar))]
+        start += end+1
+        if start == len(note_values):
+            break
+    return new_values
+
+def get_song_data(music_notes, note_values, bar_value, factor, length,
+                  decay, sustain_level, sample_rate=44100, amplitude=4096):
+    # Get note frequencies
+    note_freqs = get_piano_notes()
+    frequencies = [note_freqs[note] for note in music_notes]
+    # Get new note durations with sustain applied
+    new_values = apply_pedal(note_values, bar_value)
+    # End of each note without sustain
+    end_idx = np.cumsum(np.array(note_values)*sample_rate).astype(int)
+    # Start of each note
+    start_idx = np.concatenate(([0], end_idx[:-1]))
+    # End of note with sustain
+    end_idx = np.array([start_idx[i]+new_values[i]*sample_rate for i in range(len(new_values))]).astype(int)
     
+    # Total duration of the piece
+    duration = int(sum(note_values)*sample_rate)    
+    song = np.zeros((duration,))
+    for i in range(len(music_notes)):
+        # Fundamental + overtones
+        this_note = apply_overtones(frequencies[i], new_values[i], factor)
+        # ADSR model
+        weights = get_adsr_weights(frequencies[i], new_values[i], length, 
+                                   decay, sustain_level)
+        song[start_idx[i]:end_idx[i]] += this_note*weights
+
+    song = song*(amplitude/np.max(song))
+    return song
+
+
 #endregion
 
 # Get middle C frequency
