@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.io import wavfile
-import utils
+import utils, theory
 
 # leadvoice_notes = ['C4', 'C4', 'G4', 'G4',
 #                    'A4', 'A4', 'G4',
@@ -16,6 +16,9 @@ import utils
 #                    'D4', 'D4', 'C4',]
 # leadvoice_duration = [0.5, 0.5, 0.5, 0.5,
 #                        0.5, 0.5, 1]*6
+
+progression, key = theory.generateChordProgression()
+for i in progression():
 
 voice1_notes = ['C3']
 voice1_duration = [2]
@@ -46,6 +49,10 @@ voice1 = utils.get_song_data(voice1_notes, voice1_duration, 2,
                                  factor, length, decay, sustain_level)
 voice2 = utils.get_song_data(voice2_notes, voice2_duration, 2,
                                  factor, length, decay, sustain_level)
-data = voice1+voice2
+voice3 = utils.get_song_data(voice3_notes, voice3_duration, 2,
+                                 factor, length, decay, sustain_level)
+voice4 = utils.get_song_data(voice4_notes, voice4_duration, 2,
+                                 factor, length, decay, sustain_level)
+data = voice1+voice2+voice3+voice4
 data = data * (4096/np.max(data))
 wavfile.write('data/song_1.wav', 44100, data.astype(np.int16))
